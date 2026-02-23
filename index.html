@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time Navigator Pro</title>
+<script src="https://unpkg.com/globe.gl@2.32.0/dist/globe.gl.min.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;font-family:Segoe UI,Arial,sans-serif;transition:.4s}
+body.day{background:linear-gradient(to bottom,#87CEEB,#ffffff)}
+body.night{background:#000}
+#globeContainer{width:100vw;height:100vh}
+
+/* ✅ NEW TITLE BAR */
+.title-bar{
+position:absolute;
+top:10px;
+width:100%;
+text-align:center;
+color:white;
+font-size:28px;
+font-weight:800;
+z-index:20;
+}
+
+/* Search bar moved slightly down */
+.top-bar{
+position:absolute;
+top:70px;
+width:100%;
+display:flex;
+justify-content:center;
+align-items:center;
+gap:10px;
+color:white;
+z-index:10
+}
+
+.search-wrapper{position:relative}
+input{
+padding:10px;border-radius:8px;border:none;font-size:15px;width:250px
+}
+button{
+padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font-weight:600
+}
+
+#suggestions{
+position:absolute;top:45px;left:0;width:100%;
+background:white;color:black;border-radius:8px;
+max-height:200px;overflow-y:auto;display:none;
+box-shadow:0 5px 15px rgba(0,0,0,.3);z-index:1000
+}
+
+.menu-container{position:relative}
+.menu-box{
+display:none;position:absolute;right:0;top:40px;
+background:rgba(0,0,0,.9);color:white;
+padding:12px;border-radius:12px;
+min-width:170px;text-align:left
+}
+.menu-box button{
+width:100%;margin-bottom:8px;background:none;
+color:white;text-align:left
+}
+
+#infoBox{
+position:absolute;bottom:30px;left:50%;
+transform:translateX(-50%);
+background:rgba(0,0,0,.85);
+color:white;padding:22px 35px;
+border-radius:18px;text-align:center;
+min-width:340px;box-shadow:0 10px 25px rgba(0,0,0,.4);
+z-index:10
+}
+
+#locationRow{
+display:flex;align-items:center;
+justify-content:center;gap:10px;margin-bottom:10px
+}
+#locationName{font-size:22px;font-weight:700}
+#flag{width:36px;height:24px;border-radius:4px;display:none}
+#timeDisplay{font-size:32px;font-weight:800;margin-top:5px}
+#timezoneDisplay{margin-top:8px;font-size:15px;opacity:.9}
+</style>
+</head>
+
+<body class="day">
+
+<!-- ✅ TITLE AT TOP -->
+<div class="title-bar">
+🌍 Time Navigator
+</div>
+
+<div class="top-bar">
+
+<div class="search-wrapper">
+<input type="text" id="searchInput"
+placeholder="Enter country or state"
+oninput="showSuggestions(this.value)" autocomplete="off">
+<div id="suggestions"></div>
+</div>
+
+<button onclick="searchPlace()">Search</button>
+
+<div class="menu-container">
+<button onclick="toggleMenu()">⋮</button>
+<div class="menu-box" id="menuBox">
+<strong>Time Format</strong><br>
+<button onclick="setTimeFormat('24h')">24 Hour</button>
+<button onclick="setTimeFormat('12h')">12 Hour</button>
+<hr>
+<strong>Theme</strong><br>
+<button onclick="setManualTheme('day')">Light</button>
+<button onclick="setManualTheme('night')">Dark</button>
+<button onclick="resetTheme()">Auto</button>
+</div>
+</div>
+
+</div>
+
+<div id="globeContainer"></div>
+
+<div id="infoBox">
+<div id="locationRow">
+<img id="flag">
+<div id="locationName">Click anywhere on globe</div>
+</div>
+<div id="timeDisplay">--:--:--</div>
+<div id="timezoneDisplay"></div>
+</div>
+
+<script>
+let timeFormat="24h";
+let manualTheme=null;
+let currentHour=12;
+let markerData=[];
+let liveDate=null;
+let timer=null;
+
+function formatTime(date){
+if(!date||isNaN(date)) return "--:--:--";
+let hh=date.getHours();
+let mm=String(date.getMinutes()).padStart(2,'0');
+let ss=String(date.getSeconds()).padStart(2,'0');
+if(timeFormat==="12h"){
+const suffix=hh>=12?"PM":"AM";
+hh=hh%12||12;
+return `${hh}:${mm}:${ss} ${suffix}`;
+}
+return `${String(hh).padStart(2,'0')}:${mm}:${ss}`;
+}
+
+function startClock(){
+if(timer) clearInterval(timer);
+timer=setInterval(()=>{
+if(!liveDate) return;
+liveDate=new Date(liveDate.getTime()+1000);
+currentHour=liveDate.getHours();
+applyTheme(currentHour);
+document.getElementById("timeDisplay").innerText=formatTime(liveDate);
+},1000);
+}
+
+function getUTCOffset(date){
+const offset=-date.getTimezoneOffset();
+const sign=offset>=0?"+":"-";
+const hrs=String(Math.floor(Math.abs(offset)/60)).padStart(2,'0');
+const mins=String(Math.abs(offset)%60).padStart(2,'0');
+return `UTC ${sign}${hrs}:${mins}`;
+}
+
+function setTimeFormat(f){timeFormat=f;}
+function toggleMenu(){
+const box=document.getElementById("menuBox");
+box.style.display=box.style.display==="block"?"none":"block";
+}
+function setManualTheme(t){
+manualTheme=t;
+document.body.className=t;
+globe.backgroundImageUrl(t==="night"?
+"https://raw.githubusercontent.com/turban/webgl-earth/master/images/starfield.jpg":null);
+}
+function resetTheme(){manualTheme=null;applyTheme(currentHour);}
+function applyTheme(h){
+if(manualTheme) return;
+document.body.className=(h>=6&&h<18)?"day":"night";
+globe.backgroundImageUrl(h>=6&&h<18?null:
+"https://raw.githubusercontent.com/turban/webgl-earth/master/images/starfield.jpg");
+}
+
+const globe=Globe()(document.getElementById('globeContainer'))
+.globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+.backgroundColor('rgba(0,0,0,0)')
+.pointsData(markerData)
+.pointAltitude(0.02)
+.pointColor(()=>'#ff3b3b')
+.pointRadius(0.4)
+.onGlobeClick(({lat,lng})=>goToLocation(lat,lng));
+
+function goToLocation(lat,lng){
+markerData=[{lat,lng}];
+globe.pointsData(markerData);
+globe.pointOfView({lat,lng,altitude:1.3},1000);
+fetchLocationAndTime(lat,lng);
+}
+
+async function fetchLocationAndTime(lat,lng){
+try{
+const geoRes=await fetch(
+`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+);
+const geoData=await geoRes.json();
+
+const country=geoData.address?.country||"Unknown";
+const state=geoData.address?.state||"";
+const countryCode=geoData.address?.country_code||"";
+document.getElementById("locationName").innerText=
+state?`${state}, ${country}`:country;
+
+if(countryCode){
+const flag=document.getElementById("flag");
+flag.src=`https://flagcdn.com/w40/${countryCode}.png`;
+flag.style.display="block";
+}
+
+const timeRes=await fetch(
+`https://timeapi.io/api/Time/current/coordinate?latitude=${lat}&longitude=${lng}`
+);
+const timeData=await timeRes.json();
+
+if(timeData?.dateTime){
+liveDate=new Date(timeData.dateTime);
+currentHour=liveDate.getHours();
+applyTheme(currentHour);
+startClock();
+document.getElementById("timezoneDisplay").innerText =
+`🌐 Time Zone: ${timeData.timeZone || "Unknown"} (${getUTCOffset(liveDate)})`;
+}
+}catch{
+document.getElementById("locationName").innerText="Error fetching data";
+}
+}
+
+async function searchPlace(){
+const place=document.getElementById("searchInput").value.trim();
+if(!place) return;
+const geoRes=await fetch(
+`https://nominatim.openstreetmap.org/search?format=json&q=${place}&limit=1`
+);
+const geoData=await geoRes.json();
+if(!geoData.length){ alert("Place not found"); return; }
+goToLocation(parseFloat(geoData[0].lat),parseFloat(geoData[0].lon));
+}
+
+async function showSuggestions(query){
+const box=document.getElementById("suggestions");
+if(query.length<2){ box.style.display="none"; return; }
+const res=await fetch(
+`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=5`
+);
+const data=await res.json();
+box.innerHTML="";
+if(!data.length){ box.style.display="none"; return; }
+data.forEach(place=>{
+const div=document.createElement("div");
+div.style.padding="8px";
+div.style.cursor="pointer";
+div.innerText=place.display_name;
+div.onclick=()=>{
+document.getElementById("searchInput").value=place.display_name;
+box.style.display="none";
+goToLocation(parseFloat(place.lat),parseFloat(place.lon));
+};
+div.onmouseover=()=>div.style.background="#eee";
+div.onmouseout=()=>div.style.background="white";
+box.appendChild(div);
+});
+box.style.display="block";
+}
+</script>
+
+</body>
+</html>
